@@ -7,6 +7,15 @@ PIDS=()
 # Create fingerprint storage directory
 mkdir -p "$FINGERPRINT_DIR"
 
+# Test Python and dependencies
+bashio::log.info "Testing Python environment..."
+if ! python3 -c "import cv2; import requests; print('Dependencies OK')" 2>&1; then
+    bashio::log.error "Python dependencies failed to load!"
+    bashio::log.error "Try rebuilding the addon."
+    exit 1
+fi
+bashio::log.info "Python environment ready"
+
 # Get number of cameras
 CAMERAS_COUNT=$(jq '.cameras | length' $CONFIG_PATH)
 bashio::log.info "Found ${CAMERAS_COUNT} camera(s) configured"
@@ -54,7 +63,8 @@ for (( i=0; i<CAMERAS_COUNT; i++ )); do
     bashio::log.info "-------------------------------------------"
 
     bashio::log.info "Starting camera: ${CAMERA_NAME}"
-    python3 /main.py 2>&1 | while read line; do
+    # Use unbuffered Python output (-u) for real-time logging
+    python3 -u /main.py 2>&1 | while IFS= read -r line; do
         bashio::log.info "[${CAMERA_NAME}] ${line}"
     done &
     PIDS+=($!)
