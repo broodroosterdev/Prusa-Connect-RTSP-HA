@@ -43,8 +43,20 @@ for (( i=0; i<CAMERAS_COUNT; i++ )); do
 
     mkdir -p "$TIMELAPSE_DIR"
 
+    # Log configuration details
+    bashio::log.info "-------------------------------------------"
+    bashio::log.info "Camera ${i}: ${CAMERA_NAME}"
+    bashio::log.info "  RTSP URL: ${RTSP_URL}"
+    bashio::log.info "  Fingerprint: ${FINGERPRINT}"
+    bashio::log.info "  Token: ${TOKEN:0:8}... (hidden)"
+    bashio::log.info "  Upload interval: ${UPLOAD_INTERVAL}s"
+    bashio::log.info "  Timelapse: ${ENABLE_TIMELAPSE}"
+    bashio::log.info "-------------------------------------------"
+
     bashio::log.info "Starting camera: ${CAMERA_NAME}"
-    python3 /main.py &
+    python3 /main.py 2>&1 | while read line; do
+        bashio::log.info "[${CAMERA_NAME}] ${line}"
+    done &
     PIDS+=($!)
 done
 

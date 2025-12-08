@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0] - 2025-12-08
+
+### Added
+
+- Detailed logging showing camera configuration on startup
+- Python output prefixed with camera name for multi-camera setups
+- Visual separators in logs for easier reading
+
 ## [1.1.0] - 2025-12-08
 
 ### Added
