@@ -12,6 +12,9 @@ RUN apk add --no-cache \
     jq \
     bash
 
+# Install paho-mqtt for Home Assistant MQTT camera discovery
+RUN pip3 install --no-cache-dir --break-system-packages paho-mqtt
+
 # Copy application files
 COPY main.py /
 COPY run.sh /

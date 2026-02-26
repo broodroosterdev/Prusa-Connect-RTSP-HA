@@ -16,6 +16,19 @@ if ! python3 -c "import cv2; import requests; print('Dependencies OK')" 2>&1; th
 fi
 bashio::log.info "Python environment ready"
 
+# Detect MQTT broker from Home Assistant services
+if bashio::services.available "mqtt"; then
+    MQTT_HOST=$(bashio::services mqtt "host")
+    MQTT_PORT=$(bashio::services mqtt "port")
+    MQTT_USER=$(bashio::services mqtt "username")
+    MQTT_PASS=$(bashio::services mqtt "password")
+    bashio::log.info "MQTT broker found at ${MQTT_HOST}:${MQTT_PORT}"
+    export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASS
+else
+    bashio::log.warning "MQTT broker not available - camera entities will not be created in Home Assistant"
+    bashio::log.warning "Install Mosquitto broker addon for HA camera entity support"
+fi
+
 # Get number of cameras
 CAMERAS_COUNT=$(jq '.cameras | length' $CONFIG_PATH)
 bashio::log.info "Found ${CAMERAS_COUNT} camera(s) configured"
@@ -41,6 +54,8 @@ for (( i=0; i<CAMERAS_COUNT; i++ )); do
     fi
 
     # Export environment variables for Python script
+    export CAMERA_NAME="$CAMERA_NAME"
+    export CAMERA_SLUG="$CAMERA_SLUG"
     export RTSP_URL=$(jq -r ".cameras[$i].rtsp_url" $CONFIG_PATH)
     export TOKEN=$(jq -r ".cameras[$i].token" $CONFIG_PATH)
     export FINGERPRINT

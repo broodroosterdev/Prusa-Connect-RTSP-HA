@@ -2,7 +2,7 @@ import os
 import cv2
 import requests
 import time
-import base64
+import json
 from datetime import datetime
 import glob
 
@@ -20,6 +20,75 @@ ENABLE_TIMELAPSE = os.environ.get("ENABLE_TIMELAPSE", "false").lower() == "true"
 TIMELAPSE_SAVE_INTERVAL = int(os.environ.get("TIMELAPSE_SAVE_INTERVAL", "30"))  # Save frame every X seconds
 TIMELAPSE_DIR = os.environ.get("TIMELAPSE_DIR", "timelapse_frames")
 TIMELAPSE_FPS = int(os.environ.get("TIMELAPSE_FPS", "24"))  # FPS for timelapse video
+
+# MQTT configuration (auto-detected from Home Assistant)
+MQTT_HOST = os.environ.get("MQTT_HOST")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_USER = os.environ.get("MQTT_USER")
+MQTT_PASS = os.environ.get("MQTT_PASS")
+CAMERA_NAME = os.environ.get("CAMERA_NAME", "Printer Camera")
+CAMERA_SLUG = os.environ.get("CAMERA_SLUG", "printer_camera").lower().replace(" ", "_")
+
+# MQTT client setup
+mqtt_client = None
+mqtt_connected = False
+
+if MQTT_HOST:
+    try:
+        import paho.mqtt.client as paho_mqtt
+
+        MQTT_IMAGE_TOPIC = f"prusa_connect_rtsp/{CAMERA_SLUG}/image"
+        MQTT_AVAIL_TOPIC = f"prusa_connect_rtsp/{CAMERA_SLUG}/availability"
+        MQTT_DISCOVERY_TOPIC = f"homeassistant/camera/prusa_rtsp_{CAMERA_SLUG}/config"
+
+        def on_mqtt_connect(client, userdata, flags, rc):
+            global mqtt_connected
+            if rc == 0:
+                mqtt_connected = True
+                print(f"📡 MQTT connected to {MQTT_HOST}:{MQTT_PORT}")
+                # Publish availability
+                client.publish(MQTT_AVAIL_TOPIC, "online", retain=True)
+                # Publish HA MQTT discovery config
+                discovery_payload = json.dumps({
+                    "name": CAMERA_NAME,
+                    "unique_id": f"prusa_rtsp_{CAMERA_SLUG}",
+                    "topic": MQTT_IMAGE_TOPIC,
+                    "availability_topic": MQTT_AVAIL_TOPIC,
+                    "device": {
+                        "identifiers": [f"prusa_connect_rtsp_{CAMERA_SLUG}"],
+                        "name": CAMERA_NAME,
+                        "manufacturer": "Prusa Connect RTSP",
+                    },
+                })
+                client.publish(MQTT_DISCOVERY_TOPIC, discovery_payload, retain=True)
+                print(f"📡 MQTT discovery published for {CAMERA_NAME}")
+            else:
+                print(f"⚠️ MQTT connection failed with code {rc}")
+
+        def on_mqtt_disconnect(client, userdata, rc):
+            global mqtt_connected
+            mqtt_connected = False
+            if rc != 0:
+                print(f"⚠️ MQTT disconnected unexpectedly (rc={rc}), will auto-reconnect")
+
+        mqtt_client = paho_mqtt.Client()
+        if MQTT_USER:
+            mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+        # Set Last Will and Testament
+        mqtt_client.will_set(
+            f"prusa_connect_rtsp/{CAMERA_SLUG}/availability",
+            "offline",
+            retain=True,
+        )
+        mqtt_client.on_connect = on_mqtt_connect
+        mqtt_client.on_disconnect = on_mqtt_disconnect
+        mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=60)
+        mqtt_client.loop_start()
+    except Exception as e:
+        print(f"⚠️ MQTT setup failed: {e} - continuing without MQTT")
+        mqtt_client = None
+else:
+    print("ℹ️ MQTT not configured - camera entity will not be available in Home Assistant")
 
 # Check if RTSP_URL is set
 if not RTSP_URL:
@@ -61,9 +130,10 @@ if ENABLE_TIMELAPSE:
         os.makedirs(TIMELAPSE_DIR)
         print(f"📁 Created folder: {TIMELAPSE_DIR}")
 
-    # Clean directory at startup (only if timelapse is enabled)
-    print("🧹 Starting timelapse directory cleanup...")
-    cleanup_timelapse_directory()
+    # Count existing frames from previous sessions
+    existing_frames = glob.glob(os.path.join(TIMELAPSE_DIR, "*.jpg"))
+    if existing_frames:
+        print(f"📂 Found {len(existing_frames)} existing timelapse frames from previous sessions")
 
 def capture_frame_from_camera():
     """
@@ -314,6 +384,13 @@ try:
         # Convert to bytes (like in JS: Uint8Array.from(binary, (c2) => c2.charCodeAt(0)))
         image_bytes = jpeg.tobytes()
 
+        # Publish frame to MQTT for Home Assistant camera entity
+        if mqtt_client and mqtt_connected:
+            try:
+                mqtt_client.publish(MQTT_IMAGE_TOPIC, image_bytes, retain=False)
+            except Exception as e:
+                print(f"⚠️ MQTT publish failed: {e}")
+
         # Send frame using new HTTP session
         success, status_code, response_text = send_frame_to_prusa(image_bytes)
 
@@ -343,7 +420,22 @@ except KeyboardInterrupt:
     # Create timelapse on exit if enabled
     if ENABLE_TIMELAPSE:
         print("🎬 Creating final timelapse...")
-        create_timelapse_video()
+        if create_timelapse_video():
+            # Only clean up frames after successful video creation
+            print("🧹 Cleaning up frames after successful timelapse creation...")
+            cleanup_timelapse_directory()
 
 finally:
+    # Clean up MQTT connection
+    if mqtt_client:
+        try:
+            mqtt_client.publish(
+                f"prusa_connect_rtsp/{CAMERA_SLUG}/availability",
+                "offline",
+                retain=True,
+            )
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+        except Exception:
+            pass
     print("✅ Work completed")
