@@ -1,6 +1,6 @@
 # Home Assistant Add-on: Prusa Connect RTSP Camera
 
-[![Open your Home Assistant instance and show the add add-on repository dialog](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fschmacka%2FPrusa-Connect-RTSP-HA)
+[![Open your Home Assistant instance and show the add add-on repository dialog](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FDariBer%2FPrusa-Connect-RTSP-HA)
 
 Stream RTSP camera feeds to Prusa Connect for 3D printer monitoring through Home Assistant's configuration UI.
 
@@ -9,6 +9,7 @@ Stream RTSP camera feeds to Prusa Connect for 3D printer monitoring through Home
 - **Multi-camera support**: Configure multiple cameras, each with its own Prusa Connect credentials
 - **Password-protected tokens**: Prusa Connect tokens are hidden in the UI
 - **Timelapse support**: Optional frame capture for timelapse video generation
+- **Camera name support**: Camera name is sent to Prusa Connect for easy identification
 - **Automated upstream sync**: GitHub Actions workflow keeps the core application updated
 
 ## Installation
@@ -17,12 +18,9 @@ Stream RTSP camera feeds to Prusa Connect for 3D printer monitoring through Home
    - Navigate to **Settings** > **Add-ons** > **Add-on Store**
    - Click the menu (three dots) in the top right corner
    - Select **Repositories**
-   - Add: `https://github.com/schmacka/Prusa-Connect-RTSP-HA`
-
+   - Add: `https://github.com/DariBer/Prusa-Connect-RTSP-HA`
 2. Find "Prusa Connect RTSP Camera" in the add-on store and click **Install**
-
 3. Configure your cameras in the **Configuration** tab
-
 4. Start the add-on
 
 ## Quick Start
@@ -47,7 +45,7 @@ cameras:
 
 ## Credits
 
-This add-on wraps [Prusa-Connect-RTSP](https://github.com/Knopersikcuo/Prusa-Connect-RTSP) by Knopersikcuo.
+This add-on is a fork of [schmacka/Prusa-Connect-RTSP-HA](https://github.com/schmacka/Prusa-Connect-RTSP-HA), which wraps [Prusa-Connect-RTSP](https://github.com/Knopersikcuo/Prusa-Connect-RTSP) by Knopersikcuo.
 
 ## License
 
