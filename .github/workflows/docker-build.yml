@@ -11,7 +11,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: schmacka/rtsp-to-prusa-ha
+  IMAGE_NAME: dariber/prusa-connect-rtsp-ha
 
 jobs:
   build:
@@ -37,6 +37,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract addon version
+        id: ver
+        run: |
+          VERSION=$(awk -F'"' '/^version:/ {print $2; exit}' prusa_connect_rtsp/config.yaml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -58,6 +64,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:${{ steps.ver.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:${{ github.sha }}
           build-args: |
             BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:latest

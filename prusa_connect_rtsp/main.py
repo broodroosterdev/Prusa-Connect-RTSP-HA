@@ -3,14 +3,26 @@ import cv2
 import requests
 import time
 import json
+import signal
 from datetime import datetime
 import glob
+
+shutdown_requested = False
+
+def handle_shutdown(signum, _frame):
+    global shutdown_requested
+    print(f"\n🛑 Received signal {signum}, shutting down...")
+    shutdown_requested = True
+
+signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
 
 # Get configuration from ENV or set default values
 TOKEN = os.environ.get("TOKEN", "YOUR_TOKEN_HERE")
 FINGERPRINT = os.environ.get("FINGERPRINT", "YOUR_FINGERPRINT_HERE")
 RTSP_URL = os.environ.get("RTSP_URL")
 PRUSA_URL = "https://webcam.connect.prusa3d.com/c/snapshot"
+PRUSA_INFO_URL = "https://connect.prusa3d.com/c/info"
 
 # Upload frequency configuration (in seconds)
 UPLOAD_INTERVAL = int(os.environ.get("UPLOAD_INTERVAL", "5"))  # Default 5 seconds
@@ -71,7 +83,10 @@ if MQTT_HOST:
             if rc != 0:
                 print(f"⚠️ MQTT disconnected unexpectedly (rc={rc}), will auto-reconnect")
 
-        mqtt_client = paho_mqtt.Client()
+        try:
+            mqtt_client = paho_mqtt.Client(paho_mqtt.CallbackAPIVersion.VERSION1)
+        except AttributeError:
+            mqtt_client = paho_mqtt.Client()
         if MQTT_USER:
             mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
         # Set Last Will and Testament
@@ -108,6 +123,29 @@ print(f"📊 Upload interval: {UPLOAD_INTERVAL} seconds")
 print(f"📷 Camera name: {CAMERA_NAME}")
 print("🔄 New HTTP session for each frame (PrusaConnect fix)")
 print("📷 New camera connection for each frame (fresh frames fix)")
+
+def set_prusa_camera_name(name):
+    """
+    Tell Prusa Connect the friendly camera name via PUT /c/info,
+    so it doesn't show up as "Unnamed Camera".
+    """
+    try:
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "fingerprint": fingerprint_header,
+            "token": TOKEN,
+        }
+        payload = json.dumps({"config": {"name": name}})
+        r = requests.put(PRUSA_INFO_URL, data=payload, headers=headers, timeout=15)
+        if 200 <= r.status_code < 300:
+            print(f"✏️ Camera name registered with Prusa Connect: {name}")
+        else:
+            print(f"⚠️ Failed to set camera name in Prusa Connect "
+                  f"(status {r.status_code}): {r.text}")
+    except Exception as e:
+        print(f"⚠️ Error setting camera name in Prusa Connect: {e}")
+
 
 def cleanup_timelapse_directory():
     """
@@ -196,14 +234,14 @@ def send_frame_to_prusa(image_bytes):
         # CRITICAL: Add Content-Length header!
         content_length = len(image_bytes)
 
-        # Prepare headers with Content-Length and camera name
+        # Prepare headers with Content-Length
+        # (Camera name is registered separately via PUT /c/info on startup.)
         headers = {
             "content-type": "image/jpg",
             "content-length": str(content_length),
             "fingerprint": fingerprint_header,
             "token": TOKEN,
             "connection": "close",  # Force connection close
-            "camera-name": CAMERA_NAME,  # Set camera name in Prusa Connect
         }
 
         # Send PUT request with raw image data
@@ -259,7 +297,7 @@ def create_timelapse_video():
 
         # Create timestamp for filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"timelapse_{timestamp}.mp4"
+        output_filename = os.path.join(TIMELAPSE_DIR, f"timelapse_{timestamp}.mp4")
 
         # Read first frame to check size
         first_frame = cv2.imread(image_files[0])
@@ -347,21 +385,34 @@ def cleanup_old_frames(max_frames=100000):
     except Exception as e:
         print(f"❌ Error cleaning up frames: {e}")
 
-# Test camera connection
+# Test camera connection with retry-on-failure so a briefly unreachable
+# camera at startup does not permanently kill the addon.
 print("🔌 Testing camera connection...")
-test_frame = capture_frame_from_camera()
-if test_frame is None:
-    print("❌ Cannot connect to RTSP camera.")
-    exit(1)
-
-print("✅ Camera connection working. Starting frame upload...")
+camera_ready = False
+attempt = 0
+while not shutdown_requested:
+    if capture_frame_from_camera() is not None:
+        camera_ready = True
+        break
+    attempt += 1
+    backoff = min(60, 5 * attempt)
+    print(f"❌ Cannot connect to RTSP camera (attempt {attempt}). Retrying in {backoff}s...")
+    slept = 0.0
+    while slept < backoff and not shutdown_requested:
+        time.sleep(min(1.0, backoff - slept))
+        slept += 1.0
 
 frame_count = 0
 successful_uploads = 0
 last_timelapse_save = 0
 
+if camera_ready:
+    print("✅ Camera connection working. Starting frame upload...")
+    # Register the friendly name with Prusa Connect (best-effort; doesn't block streaming).
+    set_prusa_camera_name(CAMERA_NAME)
+
 try:
-    while True:
+    while camera_ready and not shutdown_requested:
         # Capture fresh frame from camera (new connection)
         frame = capture_frame_from_camera()
         if frame is None:
@@ -414,12 +465,14 @@ try:
             elif not success:
                 print("💡 Connection error - check internet connection")
 
-        time.sleep(UPLOAD_INTERVAL)
+        # Sleep in short slices so SIGTERM during sleep exits promptly
+        slept = 0.0
+        while slept < UPLOAD_INTERVAL and not shutdown_requested:
+            time.sleep(min(1.0, UPLOAD_INTERVAL - slept))
+            slept += 1.0
 
-except KeyboardInterrupt:
-    print("\n🛑 Stopped by user")
-
-    # Create timelapse on exit if enabled
+finally:
+    # Create timelapse on exit if enabled (covers SIGTERM and SIGINT)
     if ENABLE_TIMELAPSE:
         print("🎬 Creating final timelapse...")
         if create_timelapse_video():
@@ -427,7 +480,6 @@ except KeyboardInterrupt:
             print("🧹 Cleaning up frames after successful timelapse creation...")
             cleanup_timelapse_directory()
 
-finally:
     # Clean up MQTT connection
     if mqtt_client:
         try:

@@ -14,9 +14,9 @@ RUN apk add --no-cache \
     libstdc++ \
     libgomp
 
-# Remove broken opencv dist-info so pip can install without crashing,
-# then install paho-mqtt directly with pip bypassing the package index
-RUN rm -rf /usr/lib/python3*/site-packages/opencv* && \
+# The apk py3-opencv package ships dist-info metadata that confuses pip;
+# remove only the metadata (the cv2 module itself is untouched), then add paho-mqtt.
+RUN rm -rf /usr/lib/python3*/site-packages/opencv*.dist-info && \
     pip3 install --no-cache-dir --break-system-packages \
     --no-deps paho-mqtt
 

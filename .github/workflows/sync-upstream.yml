@@ -15,18 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch upstream files
+      - name: Fetch upstream main.py for reference
         run: |
-          curl -sL https://raw.githubusercontent.com/Knopersikcuo/Prusa-Connect-RTSP/main/main.py -o prusa_connect_rtsp/main.py
-          curl -sL https://raw.githubusercontent.com/Knopersikcuo/Prusa-Connect-RTSP/main/requirements.txt -o prusa_connect_rtsp/requirements.txt
+          # main.py here has diverged significantly from upstream (multi-camera,
+          # MQTT discovery, SIGTERM cleanup, etc.). We pull upstream into a side
+          # file so the resulting PR is a diff for manual review, not a clobber.
+          mkdir -p .upstream
+          curl -sL https://raw.githubusercontent.com/Knopersikcuo/Prusa-Connect-RTSP/main/main.py -o .upstream/main.py
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
-          commit-message: "chore: sync upstream Prusa-Connect-RTSP"
-          title: "Sync with upstream Prusa-Connect-RTSP"
+          commit-message: "chore: snapshot upstream Prusa-Connect-RTSP"
+          title: "Upstream Prusa-Connect-RTSP snapshot for review"
           body: |
-            Automated sync of `main.py` and `requirements.txt` from upstream.
+            Snapshot of upstream `main.py` placed under `.upstream/` for manual review.
+            Apply changes by hand into `prusa_connect_rtsp/main.py` — the fork has diverged.
 
             Source: [Knopersikcuo/Prusa-Connect-RTSP](https://github.com/Knopersikcuo/Prusa-Connect-RTSP)
           branch: sync-upstream
