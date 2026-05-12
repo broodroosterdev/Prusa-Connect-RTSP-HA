@@ -14,10 +14,10 @@ RUN apk add --no-cache \
     libstdc++ \
     libgomp
 
-# Install paho-mqtt, ignoring broken version metadata from py3-opencv
-RUN pip3 install --no-cache-dir --break-system-packages \
-    --ignore-installed \
-    paho-mqtt
+# Fix broken opencv version string that causes pip to crash, then install paho-mqtt
+RUN find /usr/lib/python3* -path "*/opencv*METADATA" -exec \
+    sed -i 's/^Version: python-4\.12\.0/Version: 4.12.0/' {} \; && \
+    pip3 install --no-cache-dir --break-system-packages paho-mqtt
 
 # Copy application files
 COPY main.py /
