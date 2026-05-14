@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.0] - 2026-05-14
+
+### Fixed
+
+- Changed camera url to `https://connect.prusa3d.com/c/snapshot`
+
 ## [1.4.0] - 2026-05-12
 
 ### Fixed
