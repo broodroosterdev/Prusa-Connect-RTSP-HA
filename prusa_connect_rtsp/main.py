@@ -21,7 +21,7 @@ signal.signal(signal.SIGINT, handle_shutdown)
 TOKEN = os.environ.get("TOKEN", "YOUR_TOKEN_HERE")
 FINGERPRINT = os.environ.get("FINGERPRINT", "YOUR_FINGERPRINT_HERE")
 RTSP_URL = os.environ.get("RTSP_URL")
-PRUSA_URL = "https://webcam.connect.prusa3d.com/c/snapshot"
+PRUSA_URL = "https://connect.prusa3d.com/c/snapshot"
 PRUSA_INFO_URL = "https://connect.prusa3d.com/c/info"
 
 # Upload frequency configuration (in seconds)
